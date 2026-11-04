@@ -66,6 +66,8 @@ return static function (ContainerConfigurator $container, ContainerBuilder $cont
         }
     );
 
+    $services->load('Supseven\\ThemeLibrary\\DataProcessing\\', __DIR__ . '/../Classes/DataProcessing/*');
+
     $services->set(DependencyValuesService::class)->public()->share();
 
     $services->set('typo3.request', ServerRequestInterface::class)
