@@ -124,16 +124,27 @@ class Tca
      */
     public static function addPlugin(string $extension, string $plugin, string $label, string $icon = '', string $flexform = '', string $fields = '', string $group = 'plugins', string $description = ''): void
     {
+        $extName = GeneralUtility::underscoredToUpperCamelCase($extension);
+        $extKey = GeneralUtility::camelCaseToLowerCaseUnderscored($extName);
+        $pluginName = GeneralUtility::underscoredToUpperCamelCase($plugin);
+        $piKey = GeneralUtility::camelCaseToLowerCaseUnderscored($pluginName);
+        $key = strtolower($extName) . '_' . strtolower($pluginName);
+
+        if (str_ends_with($label, ':') || str_ends_with($label, '.')) {
+            $ref = $label;
+            $label = $ref . $key . '.title';
+            $description = $ref . $key . '.description';
+        }
+
         ExtensionUtility::registerPlugin(
-            $extension,
-            $plugin,
+            $extName,
+            $pluginName,
             $label,
-            $icon ?: null,
+            $icon ?: 'plugin',
             $group ?: 'plugins',
             $description,
+            $flexform,
         );
-
-        $key = strtolower($extension) . '_' . strtolower($plugin);
 
         $GLOBALS['TCA']['tt_content']['types'][$key] = $GLOBALS['TCA']['tt_content']['types']['header'];
 
@@ -147,16 +158,18 @@ class Tca
             }
 
             if (!str_contains($fields, 'pi_flexform')) {
+                if (!$fields) {
+                    $fields = '--div--;LLL:EXT:frontend/Resources/Private/Language/locallang_ttc.xlf:tabs.plugin,';
+                }
+
                 $fields .= 'pi_flexform';
             }
-
-            $GLOBALS['TCA']['tt_content']['types'][$key]['columnsOverrides']['pi_flexform']['config']['ds'] = $flexform;
         }
 
         if ($fields) {
             ExtensionManagementUtility::addToAllTCAtypes(
                 'tt_content',
-                '--div--;LLL:EXT:frontend/Resources/Private/Language/locallang_ttc.xlf:tabs.plugin,' . $fields,
+                $fields,
                 $key,
                 'after:header'
             );
