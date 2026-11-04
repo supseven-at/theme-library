@@ -7,6 +7,8 @@ namespace Supseven\ThemeLibrary\DataProcessing;
 use Doctrine\DBAL\ArrayParameterType;
 use Supseven\ThemeLibrary\Attributes\AsDataProcessor;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\Restriction\FrontendRestrictionContainer;
+use TYPO3\CMS\Core\Database\Query\Restriction\LimitToTablesRestrictionContainer;
 use TYPO3\CMS\Core\DataHandling\TableColumnType;
 use TYPO3\CMS\Core\Domain\Repository\PageRepository;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
@@ -44,26 +46,27 @@ use TYPO3\CMS\Frontend\ContentObject\DataProcessorInterface;
  *             // Used UID of first level
  *             pid.data = leveluid : 1
  *
- *             // Level 0 means, include UIDs of property `pid` in the menu
- *             // int, default: 0
- *             minLevel = 0
- *
- *             // Level 1 starts with the pages, that are direct children of the page(s) of property `pid`
+ *             // Level to start the menu at, 1 means the pages below the pages defined in property `pid`
+ *             // int, default: 1
  *             minLevel = 1
+ *
+ *             // Level 0 starts with the pages, that are defined in `pid` themselves
+ *             // eg. if setting `pid.data = leveluid : 0`, the root page will be the first element
+ *             minLevel = 0
  *
  *             // Set level to traverse down.
  *             // relative to PIDs, not setting minLevel!
  *             // A value of 2 creates two levels if minLevel is 0, but only one if minLevel is 1
  *             // int, default: 6
- *             maxLevel = 2
+ *             maxLevel = 3
  *
  *             // Include pages not in menu, ignoring the setting `nav_hide`
  *             // bool, default: false
  *             includeNotInMenu = 1
  *
- *             // Include "spacer" element, pages with doktype 199
- *             // bool, default: false
- *             includeSpacer = 1
+ *             // Comma separated list of doktypes to include
+ *             // string, default: 1,3,4 (Default, Shortcut, Link)
+ *             doktypes = 1,3,21,22,23
  *
  *             // Double-slash separated list of fields to use for the title of a menu item
  *             // The first non-empty field will be used
@@ -104,13 +107,23 @@ class SimpleMenuProcessor implements DataProcessorInterface
         }
 
         $language = $cObj->getRequest()->getAttribute('language');
-        $minLevel = (int)$cObj->stdWrapValue('minLevel', $processorConfiguration, 0);
+        $minLevel = (int)$cObj->stdWrapValue('minLevel', $processorConfiguration, 1);
         $maxLevel = (int)$cObj->stdWrapValue('maxLevel', $processorConfiguration, 6);
-        $includeSpacer = (bool)$cObj->stdWrapValue('includeSpacer', $processorConfiguration, false);
+
+        if ($minLevel > $maxLevel) {
+            throw new \InvalidArgumentException('Setting minLevel must not be be higher than maxLevel');
+        }
+
         $includeNotInMenu = (bool)$cObj->stdWrapValue('includeNotInMenu', $processorConfiguration, false);
+        $doktypes = (string)$cObj->stdWrapValue('doktypes', $processorConfiguration, '1,3,4');
+        $doktypesList = GeneralUtility::intExplode(',', $doktypes, true);
+
+        if (!$doktypesList) {
+            throw new \InvalidArgumentException('No doktypes defined');
+        }
 
         // Fetch flat list of pages data
-        $pages = $this->fetchPages($language->getLanguageId(), $minLevel, $maxLevel, $includeSpacer, $includeNotInMenu, ...$pids);
+        $pages = $this->fetchPages($language->getLanguageId(), $minLevel, $maxLevel, $includeNotInMenu, $doktypesList, ...$pids);
 
         // Early exit if no pages found
         if (!$pages) {
@@ -139,14 +152,20 @@ class SimpleMenuProcessor implements DataProcessorInterface
             $current = $data['uid'] === $currentPageUid;
             $hasSubpages = false;
             $spacer = (int)$data['doktype'] === PageRepository::DOKTYPE_SPACER;
+            $link = '';
+            $target = '';
 
-            if ((int)$data['doktype'] === PageRepository::DOKTYPE_DEFAULT) {
+            if ((int)$data['doktype'] !== PageRepository::DOKTYPE_DEFAULT) {
+                try {
+                    $to = $cObj->createLink('', ['parameter' => $data['uid']]);
+                    $link = $to->getUrl();
+                    $target = $to->getTarget();
+                } catch (\Exception $e) {
+                }
+            }
+
+            if (!$link) {
                 $link = $linkPrefix . trim($data['slug'], '/') . '/';
-                $target = '';
-            } else {
-                $to = $cObj->createLink('', ['parameter' => $data['uid']]);
-                $link = $to->getUrl();
-                $target = $to->getTarget();
             }
 
             foreach ($titleFields as $titleField) {
@@ -186,31 +205,31 @@ class SimpleMenuProcessor implements DataProcessorInterface
         return $processedData;
     }
 
-    protected function fetchPages(int $languageUid, int $minLevel, int $maxLevel, bool $includeSpacer, bool $includeNotInMenu, int ...$pids): array
+    protected function fetchPages(int $languageUid, int $minLevel, int $maxLevel, bool $includeNotInMenu, array $doktypesList, int ...$pids): array
     {
         $cnx = $this->connectionPool->getConnectionForTable('pages');
+        $qi = static fn (string $identifier): string => $cnx->quoteIdentifier($identifier);
 
         $sqlTmpl = 'WITH RECURSIVE __menu AS
 (
-    WITH `init` AS (
+    WITH __init AS (
         %s
     )
-    SELECT * FROM `init`
+    SELECT * FROM __init
     UNION ALL
     %s
 )
 %s';
         // The initial query of the CTE is a list of SELECT literals
         $initParts = array_map(
-            static fn (int $pid): string => sprintf('SELECT %d AS `uid`, 0 AS `__lvl`', $pid),
+            static fn (int $pid): string => sprintf('SELECT %d AS %s, 0 AS %s', $pid, $qi('uid'), $qi('__lvl')),
             $pids,
         );
         $initQuery = implode(' UNION ', $initParts);
 
-        $qi = static fn ($identifier) => $cnx->quoteIdentifier($identifier);
-
         // The sub-query of the CTE joins with itself the fetch pages recursively
         $sub = $cnx->createQueryBuilder();
+        $sub->getRestrictions()->removeAll();
         $sub->select('sub.uid');
         $sub->addSelectLiteral($qi('__lvl') . ' + 1 AS ' . $qi('__lvl'));
         $sub->from('pages', 'sub');
@@ -248,29 +267,23 @@ class SimpleMenuProcessor implements DataProcessorInterface
             ));
         }
 
-        $doktypeWhere = $outer->expr()->lt('t' . $languageUid . '.doktype', '100');
-
-        if ($includeSpacer) {
-            $doktypeWhere = $outer->expr()->or(
-                $outer->expr()->eq('t' . $languageUid . '.doktype', (string)PageRepository::DOKTYPE_SPACER),
-                $doktypeWhere,
-            );
-        }
-
-        $wheres = [$doktypeWhere];
+        $wheres = [
+            $outer->expr()->gte('__menu.__lvl', (string)$minLevel),
+            $outer->expr()->lte('__menu.__lvl', (string)$maxLevel),
+            $outer->expr()->in('t' . $languageUid . '.doktype', $doktypesList),
+        ];
 
         if (!$includeNotInMenu) {
             $wheres[] = $outer->expr()->eq('t' . $languageUid . '.nav_hide', '0');
         }
 
         if (!$languageUid) {
-            $wheres[] = $outer->expr()->bitAnd('t0.l18n_cfg', 1) . ' = 0';
+            // We use "in" instead of bitset check so the DB can use the index for the lookup
+            $wheres[] = $outer->expr()->in('t0.l18n_cfg', [0, 1, 3]);
         }
 
         $outer->where(
             $outer->expr()->eq('t0.sys_language_uid', '0'),
-            $outer->expr()->gte('__menu.__lvl', (string)$minLevel),
-            $outer->expr()->lte('__menu.__lvl', (string)$maxLevel),
             ...$wheres,
         );
 
@@ -304,6 +317,8 @@ class SimpleMenuProcessor implements DataProcessorInterface
             $qb->expr()->in('t0.uid_foreign', $qb->createNamedParameter($pids, ArrayParameterType::INTEGER)),
         );
 
+        $restrictionsForAlias = 't0';
+
         if ($languageId) {
             $qb->innerJoin(
                 't0',
@@ -314,7 +329,15 @@ class SimpleMenuProcessor implements DataProcessorInterface
                     $qb->expr()->eq('t1.sys_language_uid', (string)$languageId),
                 ),
             );
+            $restrictionsForAlias = 't1';
         }
+
+        $restrictionsContainer = GeneralUtility::makeInstance(LimitToTablesRestrictionContainer::class);
+        $restrictionsContainer->addForTables(
+            GeneralUtility::makeInstance(FrontendRestrictionContainer::class),
+            [$restrictionsForAlias => 'sys_file_reference'],
+        );
+        $qb->setRestrictions($restrictionsContainer);
 
         $qb->orderBy('t0.pid');
         $qb->addOrderBy('t0.sorting_foreign');
