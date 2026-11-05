@@ -8,11 +8,13 @@ use Psr\Http\Message\ServerRequestInterface;
 use Supseven\ThemeLibrary\Attributes\AsContentObject;
 use Supseven\ThemeLibrary\Attributes\AsDataProcessor;
 use Supseven\ThemeLibrary\Service\DependencyValuesService;
+use Supseven\ThemeLibrary\Service\DomFactory;
 use Supseven\ThemeLibrary\Service\FlashMessager;
 use Supseven\ThemeLibrary\Service\PageCacheService;
 use Symfony\Component\DependencyInjection\ChildDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Exception\AutoconfigureFailedException;
+use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Core\ApplicationContext;
 use TYPO3\CMS\Core\DataHandling\SlugHelper;
 use TYPO3\CMS\Core\Http\ApplicationType;
@@ -98,6 +100,12 @@ return static function (ContainerConfigurator $container, ContainerBuilder $cont
         ->autowire(false)
         ->autoconfigure(false);
 
+    $services->set('typo3.be_user', BackendUserAuthentication::class)
+        ->factory([service(DependencyValuesService::class), 'getBackendUser'])
+        ->lazy()
+        ->autowire(false)
+        ->autoconfigure(false);
+
     $services->set('typo3.slugs.pages', SlugHelper::class)
         ->share(false)
         ->class(SlugHelper::class)
@@ -111,6 +119,6 @@ return static function (ContainerConfigurator $container, ContainerBuilder $cont
         ->args(['tt_content', 'title']);
 
     $services->set(PageCacheService::class)->share()->lazy();
-
     $services->set(FlashMessager::class)->share();
+    $services->set(DomFactory::class)->share();
 };
