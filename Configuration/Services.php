@@ -7,6 +7,8 @@ namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 use Psr\Http\Message\ServerRequestInterface;
 use Supseven\ThemeLibrary\Attributes\AsContentObject;
 use Supseven\ThemeLibrary\Attributes\AsDataProcessor;
+use Supseven\ThemeLibrary\Imaging\GenerateMiddleware;
+use Supseven\ThemeLibrary\Imaging\ImageGeneratorService;
 use Supseven\ThemeLibrary\Service\DependencyValuesService;
 use Supseven\ThemeLibrary\Service\DomFactory;
 use Supseven\ThemeLibrary\Service\FlashMessager;
@@ -69,6 +71,10 @@ return static function (ContainerConfigurator $container, ContainerBuilder $cont
     );
 
     $services->load('Supseven\\ThemeLibrary\\DataProcessing\\', __DIR__ . '/../Classes/DataProcessing/*');
+    $services->load('Supseven\\ThemeLibrary\\ViewHelpers\\', __DIR__ . '/../Classes/ViewHelpers/*');
+
+    $services->set(ImageGeneratorService::class)->share()->public();
+    $services->set(GenerateMiddleware::class)->share()->public();
 
     $services->set(DependencyValuesService::class)->public()->share();
 
