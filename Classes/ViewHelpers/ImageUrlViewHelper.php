@@ -8,11 +8,12 @@ use Supseven\ThemeLibrary\Imaging\ImageGeneratorService;
 use TYPO3\CMS\Core\Resource\File;
 use TYPO3\CMS\Core\Resource\FileReference;
 use TYPO3\CMS\Extbase\Domain\Model\FileReference as ExtbaseReference;
+use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 
 /**
  * @author Georg Großberger <g.grossberger@supseven.at>
  */
-class ImageUriViewHelper extends \TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper
+class ImageUrlViewHelper extends AbstractViewHelper
 {
     public function __construct(
         protected ImageGeneratorService $generatorService,
@@ -21,11 +22,11 @@ class ImageUriViewHelper extends \TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewH
 
     public function initializeArguments(): void
     {
-        $this->registerArgument('image', 'object', 'image');
-        $this->registerArgument('width', 'int', 'width of the image. This can be a numeric value representing the fixed width of the image in pixels. But you can also perform simple calculations by adding "m" or "c" to the value. See imgResource.width for possible options.', false, 0);
-        $this->registerArgument('height', 'int', 'height of the image. This can be a numeric value representing the fixed height of the image in pixels. But you can also perform simple calculations by adding "m" or "c" to the value. See imgResource.width for possible options.', false, 0);
+        $this->registerArgument('image', 'object', 'image to create a URL for. Can be a FAL file, a FAL reference or an extbase FileReference. Must be an image.');
+        $this->registerArgument('width', 'int', 'maximum width of the image. The default of `0` means no scaling.', false, 0);
+        $this->registerArgument('height', 'int', 'maximum height of the image. The default of `0` means no scaling', false, 0);
         $this->registerArgument('cropVariant', 'string', 'select a cropping variant, in case multiple croppings have been specified or stored in FileReference', false, 'default');
-        $this->registerArgument('fileExtension', 'string', 'Custom file extension to use', false, 'webp');
+        $this->registerArgument('fileExtension', 'string', 'file extension to use', false, 'webp');
     }
 
     public function render(): string

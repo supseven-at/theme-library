@@ -36,7 +36,8 @@ class GenerateMiddleware implements MiddlewareInterface, LoggerAwareInterface
     {
         $path = $request->getUri()->getPath();
 
-        if ((str_contains($path, '/ref-') || str_contains($path, '/file-')) && preg_match(self::ImageUrlPattern, $path, $match)) {
+        if ((str_contains($path, '/ref-') || str_contains($path, '/file-'))
+            && preg_match(self::ImageUrlPattern, $path, $match)) {
             $locker = $this->lockFactory->createLocker($match['key']);
 
             try {
@@ -57,7 +58,7 @@ class GenerateMiddleware implements MiddlewareInterface, LoggerAwareInterface
                     ->withBody($body)
                     ->withHeader('Content-Type', $result->mimetype());
             } catch (\Throwable $exception) {
-                $this->logger->error($exception->getMessage(), ['exception' => $exception, 'path' => $path]);
+                $this->logger->alert($exception->getMessage(), ['exception' => $exception, 'path' => $path]);
             } finally {
                 if ($locker->isAcquired()) {
                     $locker->release();
