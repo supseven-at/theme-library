@@ -111,7 +111,7 @@ class Tca
     }
 
     /**
-     * Add a extbase plugin
+     * Add an extbase plugin
      *
      * @param string $extension
      * @param string $plugin
@@ -125,9 +125,7 @@ class Tca
     public static function addPlugin(string $extension, string $plugin, string $label, string $icon = '', string $flexform = '', string $fields = '', string $group = 'plugins', string $description = ''): void
     {
         $extName = GeneralUtility::underscoredToUpperCamelCase($extension);
-        $extKey = GeneralUtility::camelCaseToLowerCaseUnderscored($extName);
         $pluginName = GeneralUtility::underscoredToUpperCamelCase($plugin);
-        $piKey = GeneralUtility::camelCaseToLowerCaseUnderscored($pluginName);
         $key = strtolower($extName) . '_' . strtolower($pluginName);
 
         if (str_ends_with($label, ':') || str_ends_with($label, '.')) {
@@ -146,13 +144,15 @@ class Tca
             $flexform,
         );
 
-        $GLOBALS['TCA']['tt_content']['types'][$key] = $GLOBALS['TCA']['tt_content']['types']['header'];
+        if (empty($GLOBALS['TCA']['tt_content']['types'][$key])) {
+            $GLOBALS['TCA']['tt_content']['types'][$key] = $GLOBALS['TCA']['tt_content']['types']['header'];
+        }
 
         if ($icon) {
             $GLOBALS['TCA']['tt_content']['ctrl']['typeicon_classes'][$key] = $icon;
         }
 
-        if ($flexform) {
+        if ($flexform && !str_contains($GLOBALS['TCA']['tt_content']['types'][$key]['showitem'], 'pi_flexform')) {
             if ($fields) {
                 $fields .= ', ';
             }
